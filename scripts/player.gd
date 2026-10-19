@@ -9,21 +9,21 @@ extends CharacterBody3D
 
 signal grappled
 
-const GRAVITY := 24.0
-const WALK_SPEED := 9.0
-const GROUND_ACCEL := 70.0
+const GRAVITY := 13.0
+const WALK_SPEED := 6.0
+const GROUND_ACCEL := 25.0
 const GROUND_FRICTION := 8.0
-const JUMP_VELOCITY := 8.0
-const AIR_ACCEL := 30.0
-const AIR_SPEED := 7.0          # air strafe cap (quake-style)
-const SWING_ACCEL := 14.0       # WASD "pump" force while hanging
+const JUMP_VELOCITY := 6.0
+const AIR_ACCEL := 10.0
+const AIR_SPEED := 5.0          # air strafe cap (quake-style)
+const SWING_ACCEL := 7.0       # WASD "pump" force while hanging
 const MAX_RANGE := 70.0         # how far the hook can reach
 const MIN_ROPE := 2.5
-const REEL_SPEED := 18.0
-const ATTACH_PULL := 0.15       # rope shortens by this fraction on attach (the "tug")
-const MAX_CORRECTION := 45.0    # caps rope-yank velocity so it never explodes
-const MAX_SPEED := 90.0
-const RELEASE_HOP := 5.0
+const REEL_SPEED := 7.0
+const ATTACH_PULL := 0.03       # rope shortens by this fraction on attach (the "tug")
+const MAX_CORRECTION := 25.0    # caps rope-yank velocity so it never explodes
+const MAX_SPEED := 45.0
+const RELEASE_HOP := 3.5
 const CAM_DISTANCE := 5.5
 const CAM_SHOULDER := 0.8
 
@@ -141,9 +141,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				release()
 		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP and attached:
-			rope_len = max(MIN_ROPE, rope_len - 1.5)
+			rope_len = max(MIN_ROPE, rope_len - 0.75)
 		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN and attached:
-			rope_len = min(MAX_RANGE, rope_len + 1.5)
+			rope_len = min(MAX_RANGE, rope_len + 0.75)
 
 
 func aim_ray() -> Dictionary:
@@ -195,6 +195,8 @@ func _physics_process(dt: float) -> void:
 	velocity.y -= GRAVITY * dt
 
 	if attached:
+		if is_on_floor():
+			_walk(wish, dt)   # rope is slack on the ground: walk normally, no ice-skating
 		_swing(wish, dt)
 		if controls_enabled and Input.is_action_just_pressed("jump"):
 			release(true)

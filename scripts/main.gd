@@ -34,7 +34,7 @@ var win_label: Label
 func _ready() -> void:
 	_setup_input()
 	_build_environment()
-	_build_level()
+	_build_test_area()   # swap for _build_level() to get the lava course back
 	player = PlayerScript.new()
 	add_child(player)
 	player.reset_to(START_POS, 0.0)
@@ -230,7 +230,31 @@ func ring(pos: Vector3, facing_x := false) -> void:
 			_toast("Ring %d/%d" % [rings_got, rings_total]))
 
 
-# ---------------------------------------------------------------- the course
+# ---------------------------------------------------------------- test area
+# Flat ground with grapple targets scattered in the air, for tuning the feel.
+func _build_test_area() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1337   # same layout every time
+	box(Vector3(0, -0.5, 0), Vector3(500, 1, 500), Color(0.45, 0.55, 0.42))
+	# faint grid stripes so you can judge speed
+	for i in range(-12, 13):
+		box(Vector3(i * 20, 0.01, 0), Vector3(0.3, 0.02, 500), Color(0.38, 0.47, 0.36))
+		box(Vector3(0, 0.01, i * 20), Vector3(500, 0.02, 0.3), Color(0.38, 0.47, 0.36))
+	var colors := [Color(0.3, 0.6, 0.7), Color(0.55, 0.45, 0.75), Color(0.9, 0.75, 0.35), Color(0.85, 0.4, 0.4)]
+	for i in 70:
+		var ang := rng.randf() * TAU
+		var dist := rng.randf_range(12, 200)
+		var pos := Vector3(cos(ang) * dist, rng.randf_range(8, 32), sin(ang) * dist)
+		var c: Color = colors[i % colors.size()]
+		match i % 3:
+			0: box(pos, Vector3.ONE * rng.randf_range(2, 5), c)
+			1: ball(pos, rng.randf_range(1.5, 3.5), c)
+			2:
+				var b := box(pos, Vector3(rng.randf_range(10, 24), 1.2, 1.2), c)
+				b.rotation.y = rng.randf() * PI
+
+
+# ---------------------------------------------------------------- the course (lava run, currently off)
 # Forward is -Z. Every solid surface is grappleable.
 func _build_level() -> void:
 	var stone := Color(0.55, 0.52, 0.5)
@@ -417,8 +441,8 @@ func _process(dt: float) -> void:
 		run_time += dt
 	timer_label.text = _fmt(run_time)
 	var spd := player.velocity.length()
-	info_label.text = "Speed %d   Rings %d/%d%s" % [
-		roundi(spd * 3.6), rings_got, rings_total,
+	info_label.text = "Speed %d%s%s" % [
+		roundi(spd * 3.6), ("   Rings %d/%d" % [rings_got, rings_total]) if rings_total > 0 else "",
 		("   Best " + _fmt(best_time)) if best_time > 0 else ""]
 
 	if player.attached:

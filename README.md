@@ -5,6 +5,8 @@ A third-person grapple-hook swinging game in **Godot 4.7** — point, click, swi
 **Play in your browser:** https://kmad666.github.io/icarus-swing/
 
 ## Goal
+**Right now the game loads a flat test field** with grapple targets scattered in the air, for tuning the physics. The lava course below is still in the code (`_build_level()` in `scripts/main.gd`).
+
 Swing across the lava sea through three sections and reach the golden beacon on the summit tower. Grab the cyan rings for bonus points, beat your best time.
 
 1. **Pillar Slalom** — T-shaped columns with arms hanging over the path
