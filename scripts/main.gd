@@ -6,6 +6,7 @@ const PlayerScript := preload("res://scripts/player.gd")
 
 const DEATH_Y := -32.0
 const SAVE_PATH := "user://best.save"
+const SETTINGS_PATH := "user://settings.save"
 const START_POS := Vector3(0, 1.5, 4)
 
 var player: CharacterBody3D
@@ -29,6 +30,8 @@ var toast_t := 0.0
 var overlay: Control
 var win_panel: PanelContainer
 var win_label: Label
+var preset_buttons: Array[Button] = []
+var preset_desc: Label
 
 
 func _ready() -> void:
@@ -38,6 +41,12 @@ func _ready() -> void:
 	player = PlayerScript.new()
 	add_child(player)
 	player.reset_to(START_POS, 0.0)
+	var saved := 0
+	if FileAccess.file_exists(SETTINGS_PATH):
+		var f := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+		if f:
+			saved = f.get_8()
+	player.apply_preset(saved)
 	player.grappled.connect(_on_grappled)
 	_build_hud()
 	_load_best()
@@ -391,16 +400,40 @@ func _build_hud() -> void:
 	title.add_theme_color_override("font_color", Color(1.0, 0.7, 0.3))
 	col.add_child(title)
 	var help := _label(
-		"Reach the golden beacon. Don't touch the lava.\n\n" +
 		"Mouse — look        Hold LEFT CLICK — grapple & swing\n" +
-		"Release — let go      Space — jump / hop off rope\n" +
-		"WASD — walk, air-steer, pump your swing\n" +
-		"Right click / Shift / E / wheel up — reel in\n" +
+		"Release LEFT CLICK — let go      Space — jump\n" +
+		"WASD — walk, air-steer, push while hooked\n" +
+		"Space / Right click / Shift / E / wheel up — reel in\n" +
 		"Q / Ctrl / wheel down — reel out\n" +
-		"R — restart run      Esc — pause\n\n" +
-		"CLICK TO PLAY", 20)
+		"1 / 2 / 3 — physics preset      R — restart      Esc — pause", 20)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(help)
+
+	# Options: physics presets
+	var opt_title := _label("\nPHYSICS PRESET", 22)
+	opt_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	opt_title.add_theme_color_override("font_color", Color(1.0, 0.7, 0.3))
+	col.add_child(opt_title)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 12)
+	col.add_child(row)
+	for i in player.PRESETS.size():
+		var b := Button.new()
+		b.text = "%d. %s" % [i + 1, player.PRESETS[i].name]
+		b.toggle_mode = true
+		b.custom_minimum_size = Vector2(170, 44)
+		b.add_theme_font_size_override("font_size", 20)
+		b.pressed.connect(set_preset.bind(i))
+		row.add_child(b)
+		preset_buttons.append(b)
+	preset_desc = _label("", 18)
+	preset_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(preset_desc)
+	var go := _label("\nCLICK ANYWHERE TO PLAY", 22)
+	go.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(go)
+	_refresh_preset_ui()
 
 	# Win panel
 	win_panel = PanelContainer.new()
@@ -418,8 +451,26 @@ func _on_overlay_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+func set_preset(i: int) -> void:
+	player.apply_preset(i)
+	_refresh_preset_ui()
+	_toast("Physics: %d. %s" % [i + 1, player.PRESETS[i].name])
+	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if f:
+		f.store_8(i)
+
+
+func _refresh_preset_ui() -> void:
+	for i in preset_buttons.size():
+		preset_buttons[i].set_pressed_no_signal(i == player.preset_index)
+	preset_desc.text = player.PRESETS[player.preset_index].desc
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("restart"):
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_3:
+		set_preset(event.physical_keycode - KEY_1)
+	elif event.is_action_pressed("restart"):
 		restart_run()
 	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -441,8 +492,8 @@ func _process(dt: float) -> void:
 		run_time += dt
 	timer_label.text = _fmt(run_time)
 	var spd := player.velocity.length()
-	info_label.text = "Speed %d%s%s" % [
-		roundi(spd * 3.6), ("   Rings %d/%d" % [rings_got, rings_total]) if rings_total > 0 else "",
+	info_label.text = "Physics: %s   Speed %d%s%s" % [
+		player.PRESETS[player.preset_index].name, roundi(spd * 3.6), ("   Rings %d/%d" % [rings_got, rings_total]) if rings_total > 0 else "",
 		("   Best " + _fmt(best_time)) if best_time > 0 else ""]
 
 	if player.attached:

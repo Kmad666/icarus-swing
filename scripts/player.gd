@@ -1,5 +1,5 @@
 extends CharacterBody3D
-## First-person player with a Verlet-style grapple hook.
+## Third-person player with a Verlet-style grapple hook.
 ##
 ## Hold LEFT MOUSE on any surface to fire the hook and swing. Let go to fly.
 ## The rope is a distance constraint: each tick we predict where gravity and
@@ -28,6 +28,28 @@ const CAM_DISTANCE := 5.5
 const CAM_SHOULDER := 0.8
 
 var mouse_sensitivity := 0.0025
+
+# ---- Physics presets (switch in-game with 1/2/3 or the pause menu) ----
+const PRESETS := [
+	{"name": "Float", "desc": "No gravity on the rope. Drift on your momentum.",
+		"rope_gravity": 0.0, "elastic": 0.0, "pump": 7.0},
+	{"name": "Light Arc", "desc": "25% gravity on the rope. Gentle, slow pendulum swings.",
+		"rope_gravity": 0.25, "elastic": 0.0, "pump": 7.0},
+	{"name": "Bungee", "desc": "Rope pulls you toward the hook like a stretchy band, 60% gravity. Fast and slingy.",
+		"rope_gravity": 0.6, "elastic": 1.4, "pump": 9.0},
+]
+var preset_index := 0
+var rope_gravity := 0.0   # fraction of GRAVITY applied while hooked
+var elastic := 0.0        # 0 = rigid rope; >0 = pull strength toward the hook
+var pump := SWING_ACCEL
+
+
+func apply_preset(i: int) -> void:
+	preset_index = clamp(i, 0, PRESETS.size() - 1)
+	var p: Dictionary = PRESETS[preset_index]
+	rope_gravity = p.rope_gravity
+	elastic = p.elastic
+	pump = p.pump
 
 var head: Node3D
 var cam: Camera3D
@@ -192,8 +214,7 @@ func _physics_process(dt: float) -> void:
 	wish.y = 0
 	wish = wish.normalized()
 
-	if not attached:
-		velocity.y -= GRAVITY * dt   # no gravity while hooked: you float on the rope
+	velocity.y -= GRAVITY * (rope_gravity if attached else 1.0) * dt
 
 	if attached:
 		if is_on_floor():
@@ -234,7 +255,13 @@ func _swing(wish: Vector3, dt: float) -> void:
 
 	# Pump: push perpendicular to the rope in the direction you're holding
 	var push := wish - rope_dir * wish.dot(rope_dir)
-	velocity += push * SWING_ACCEL * dt
+	velocity += push * pump * dt
+
+	# Bungee preset: rope tugs you toward the hook, harder the farther you are
+	if elastic > 0.0:
+		var dist := global_position.distance_to(anchor)
+		velocity -= rope_dir * min(elastic * max(dist - 3.0, 0.0), 22.0) * dt
+		rope_len = min(rope_len, dist + 0.5)   # rope tightens as you're pulled in
 
 	# The initial tug, then manual reeling
 	if pull_left > 0.0:
