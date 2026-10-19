@@ -1,0 +1,40 @@
+# Icarus Swing
+
+A first-person grapple-hook swinging game in **Godot 4.7** — point, click, swing, fly. Inspired by Verlet Swing. All art is placeholder shapes for now.
+
+**Play in your browser:** https://kmad666.github.io/icarus-swing/
+
+## Goal
+Swing across the lava sea through three sections and reach the golden beacon on the summit tower. Grab the cyan rings for bonus points, beat your best time.
+
+1. **Pillar Slalom** — T-shaped columns with arms hanging over the path
+2. **Beam Run** — overhead bars at alternating heights
+3. **Moons** — floating spheres, then reel yourself up to the gold block above the summit
+
+Green platforms are checkpoints. Falling into the lava sends you back to the last one.
+
+## Controls
+| Input | Action |
+|---|---|
+| Mouse | Look |
+| Hold **Left Click** | Fire grapple & swing (crosshair turns green when in range, 70 m) |
+| Release Left Click | Let go, keep momentum |
+| **WASD** | Walk / air-steer / pump your swing |
+| **Space** | Jump, or hop off the rope with a little boost |
+| Right Click / Shift / E / Wheel Up | Reel in |
+| Q / Ctrl / Wheel Down | Reel out |
+| **R** | Restart run |
+| Esc | Pause |
+
+Tip: grab things *above and ahead* of you. A rope on a wall just swings you into the wall.
+
+## How the rope works
+`scripts/player.gd` treats the rope as a Verlet distance constraint: each physics tick it predicts where gravity and momentum would carry you, and if that's past the rope length it projects the point back onto the rope's sphere and derives velocity from the correction. You get real pendulum swings, and reeling in pumps speed.
+
+## Project layout
+- `scripts/main.gd` — builds the course, HUD, checkpoints, rings, goal, timer
+- `scripts/player.gd` — first-person controller + grapple
+- `.github/workflows/deploy.yml` — every push to `main` exports for web and publishes to GitHub Pages (`gh-pages` branch)
+
+## Setup note
+After the first push, in the repo go to **Settings → Pages** and set the source to **Deploy from a branch → `gh-pages` / root**.
