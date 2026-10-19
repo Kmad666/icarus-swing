@@ -23,6 +23,7 @@ var rings_got := 0
 # HUD
 var crosshair
 var dist_label: Label
+var charge_label: Label
 var timer_label: Label
 var info_label: Label
 var toast: Label
@@ -60,7 +61,8 @@ func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT],
 		"move_right": [KEY_D, KEY_RIGHT],
 		"jump": [KEY_SPACE],
-		"reel_in": [KEY_SHIFT, KEY_E],
+		"reel_in": [KEY_E],
+		"dash": [KEY_SHIFT],
 		"reel_out": [KEY_CTRL, KEY_Q],
 		"restart": [KEY_R],
 	}
@@ -362,6 +364,13 @@ func _build_hud() -> void:
 	dist_label.position = Vector2(-60, 54)
 	root.add_child(dist_label)
 
+	charge_label = _label("", 22)
+	charge_label.set_anchors_preset(Control.PRESET_CENTER)
+	charge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	charge_label.size = Vector2(240, 30)
+	charge_label.position = Vector2(-120, 74)
+	root.add_child(charge_label)
+
 	timer_label = _label("0:00.00", 30)
 	timer_label.position = Vector2(20, 14)
 	root.add_child(timer_label)
@@ -396,10 +405,10 @@ func _build_hud() -> void:
 	title.add_theme_color_override("font_color", Color(1.0, 0.7, 0.3))
 	col.add_child(title)
 	var help := _label(
-		"Mouse — look        Hold LEFT CLICK — grapple & swing\n" +
+		"Mouse — look        Hold LEFT CLICK — grapple (3 in the air, refill on landing)\n" +
 		"Release LEFT CLICK — let go      Space — jump\n" +
 		"WASD — walk, air-steer, push while hooked\n" +
-		"Space / Right click / Shift / E / wheel up — reel in\n" +
+		"Space / Right click / E / wheel up — reel in      Shift — dash\n" +
 		"Q / Ctrl / wheel down — reel out\n" +
 		"1 / 2 / 3 — physics preset      R — restart      Esc — pause", 20)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -492,10 +501,17 @@ func _process(dt: float) -> void:
 		player.PRESETS[player.preset_index].name, roundi(spd * 3.6), ("   Rings %d/%d" % [rings_got, rings_total]) if rings_total > 0 else "",
 		("   Best " + _fmt(best_time)) if best_time > 0 else ""]
 
+	var pips := ""
+	for i in player.AIR_GRAPPLES:
+		pips += ("● " if i < player.air_grapples else "○ ")
+	charge_label.text = pips + ("  DASH" if player.dash_cd == 0.0 else "")
+	charge_label.modulate = Color(1, 1, 1, 0.85) if player.air_grapples > 0 else Color(1, 0.4, 0.3, 0.85)
+
+	var out_of_grapples: bool = player.air_grapples <= 0 and not player.is_on_floor()
 	if player.attached:
 		crosshair.set_color(Color(1.0, 0.65, 0.2, 0.5))
 		dist_label.text = "rope %dm" % roundi(player.rope_len)
-	elif player.aim_valid:
+	elif player.aim_valid and not out_of_grapples:
 		crosshair.set_color(Color(0.4, 1.0, 0.5, 0.5))
 		dist_label.text = "%dm" % roundi(player.aim_distance)
 	else:

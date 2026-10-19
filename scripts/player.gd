@@ -27,6 +27,15 @@ const RELEASE_HOP := 3.5
 const CAM_DISTANCE := 5.5
 const CAM_SHOULDER := 0.8
 const RETICLE_RADIUS := 48.0     # keep in sync with reticle.gd
+const AIR_GRAPPLES := 3          # grapples you can fire before touching the ground
+const DASH_SPEED := 15.0         # dash redirects you along the camera at least this fast
+const DASH_COOLDOWN := 1.2
+const RELEASE_BOOST := 0.15      # +15% speed when you let go while moving fast
+const BOOST_MIN_SPEED := 10.0
+const OVERSPEED_ALLOW := 1.3     # dash/release boost may briefly exceed the cap by 30%...
+const OVERSPEED_BLEED := 2.5     # ...then bleed back down to it this fast (per second)
+const CAM_PULLBACK := 3.0        # camera eases back this far at top speed
+const TRAIL_POINTS := 40
 
 var mouse_sensitivity := 0.0025
 
@@ -65,6 +74,11 @@ var rope_len := 0.0
 var pull_left := 0.0
 
 # What the crosshair is pointing at (read by the HUD)
+var air_grapples := AIR_GRAPPLES
+var dash_cd := 0.0
+var trail: MeshInstance3D
+var trail_mesh: ImmediateMesh
+var trail_pts: Array[Vector3] = []
 var aim_valid := false
 var aim_point := Vector3.ZERO
 var target_marker: MeshInstance3D
@@ -150,6 +164,19 @@ func _ready() -> void:
 	target_marker.visible = false
 	add_child(target_marker)
 
+	trail_mesh = ImmediateMesh.new()
+	trail = MeshInstance3D.new()
+	trail.mesh = trail_mesh
+	var tmat := StandardMaterial3D.new()
+	tmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	tmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	tmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	tmat.vertex_color_use_as_albedo = true
+	trail.material_override = tmat
+	trail.top_level = true
+	trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(trail)
+
 	hook = MeshInstance3D.new()
 	var hm := SphereMesh.new()
 	hm.radius = 0.25
@@ -216,6 +243,11 @@ func try_grapple() -> void:
 	var hit := aim_ray()
 	if hit.is_empty():
 		return
+	var grounded := is_on_floor()
+	if not grounded:
+		if air_grapples <= 0:
+			return
+		air_grapples -= 1
 	attached = true
 	anchor = hit.position
 	rope_len = global_position.distance_to(anchor)
@@ -227,6 +259,10 @@ func release(hop := false) -> void:
 	if not attached:
 		return
 	attached = false
+	# Release boost: letting go at speed flings you a little harder
+	var spd := velocity.length()
+	if spd > BOOST_MIN_SPEED:
+		velocity *= 1.0 + RELEASE_BOOST
 	if hop:
 		velocity.y = max(velocity.y, 0.0) + RELEASE_HOP
 
@@ -235,6 +271,8 @@ func reset_to(pos: Vector3, yaw: float) -> void:
 	release()
 	global_position = pos
 	velocity = Vector3.ZERO
+	air_grapples = AIR_GRAPPLES
+	trail_pts.clear()
 	rotation.y = yaw
 	head.rotation.x = 0.0
 
@@ -264,11 +302,26 @@ func _physics_process(dt: float) -> void:
 		if wish != Vector3.ZERO and cur < AIR_SPEED:
 			velocity += wish * min(AIR_ACCEL * dt, AIR_SPEED - cur)
 
-	if velocity.length() > MAX_SPEED:
-		velocity = velocity.normalized() * MAX_SPEED
+	# Dash: snap your momentum toward where the camera looks
+	dash_cd = max(dash_cd - dt, 0.0)
+	if controls_enabled and dash_cd == 0.0 and Input.is_action_just_pressed("dash"):
+		var dir := -cam.global_basis.z
+		velocity = dir * max(velocity.length(), DASH_SPEED) * (1.0 + RELEASE_BOOST)
+		dash_cd = DASH_COOLDOWN
+
+	# Speed cap: normal movement tops out at MAX_SPEED; boosts may poke above
+	# it briefly and bleed back down.
+	var spd := velocity.length()
+	if spd > MAX_SPEED * OVERSPEED_ALLOW:
+		velocity = velocity / spd * MAX_SPEED * OVERSPEED_ALLOW
+	elif spd > MAX_SPEED:
+		velocity = velocity / spd * max(MAX_SPEED, spd - MAX_SPEED * OVERSPEED_BLEED * dt)
 
 	floor_snap_length = 0.0 if attached else 0.3
 	move_and_slide()
+	if is_on_floor():
+		air_grapples = AIR_GRAPPLES
+	_update_trail()
 
 
 func _walk(wish: Vector3, dt: float) -> void:
@@ -327,13 +380,14 @@ func _process(_dt: float) -> void:
 	aim_valid = not hit.is_empty()
 	aim_point = hit.position if aim_valid else Vector3.ZERO
 	aim_distance = global_position.distance_to(aim_point) if aim_valid else 0.0
-	target_marker.visible = aim_valid and not attached and controls_enabled
+	target_marker.visible = aim_valid and not attached and controls_enabled and (air_grapples > 0 or is_on_floor())
 	if target_marker.visible:
 		target_marker.global_position = aim_point
 
 	# Speed FOV kick
 	var spd := velocity.length()
 	cam.fov = lerp(cam.fov, 72.0 + clamp((spd - 8.0) * 0.6, 0.0, 22.0), 0.08)
+	arm.spring_length = lerp(arm.spring_length, CAM_DISTANCE + CAM_PULLBACK * clamp((spd - 6.0) / (MAX_SPEED - 6.0), 0.0, 1.0), 0.05)
 
 	# Rope visual from the gun tip to the anchor
 	rope.visible = attached
@@ -350,3 +404,36 @@ func _process(_dt: float) -> void:
 			var z := x.cross(y)
 			rope.global_transform = Transform3D(Basis(x, y * length, z), (a + b) * 0.5)
 		hook.global_position = anchor
+
+
+# Fading ribbon behind the capsule so you can read your arc.
+func _update_trail() -> void:
+	var spd := velocity.length()
+	if spd > 5.0:
+		trail_pts.push_front(global_position)
+	elif not trail_pts.is_empty():
+		trail_pts.pop_back()   # shrink away when you slow down
+	while trail_pts.size() > TRAIL_POINTS:
+		trail_pts.pop_back()
+	trail_mesh.clear_surfaces()
+	if trail_pts.size() < 2:
+		return
+	var eye := cam.global_position
+	trail_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	var n := trail_pts.size()
+	for i in n:
+		var p := trail_pts[i]
+		var nxt := trail_pts[min(i + 1, n - 1)]
+		var prv := trail_pts[max(i - 1, 0)]
+		var along := (nxt - prv)
+		if along.length_squared() < 0.0001:
+			along = Vector3.FORWARD
+		var side := along.cross(eye - p).normalized()
+		var t := float(i) / (n - 1)
+		var w := 0.35 * (1.0 - t)
+		var c := Color(1.0, 0.6, 0.2, 0.6 * (1.0 - t))
+		trail_mesh.surface_set_color(c)
+		trail_mesh.surface_add_vertex(p + side * w)
+		trail_mesh.surface_set_color(c)
+		trail_mesh.surface_add_vertex(p - side * w)
+	trail_mesh.surface_end()

@@ -19,11 +19,12 @@ Green platforms are checkpoints. Falling into the lava sends you back to the las
 | Input | Action |
 |---|---|
 | Mouse | Orbit camera / turn |
-| Hold **Left Click** | Fire grapple. Anything inside the circle reticle within 70 m can be grabbed; the nearest one is marked with a green dot and is where the hook goes. The ground can't be grabbed. |
-| Release Left Click | Let go, keep momentum |
+| Hold **Left Click** | Fire grapple. Anything inside the circle reticle within 70 m can be grabbed; the nearest one is marked with a green dot and is where the hook goes. The ground can't be grabbed. You get **3 grapples in the air** (pips under the reticle); landing refills them. |
+| Release Left Click | Let go; at speed you get a +15% release boost |
 | **WASD** | Walk / air-steer; while hooked, push toward where the camera looks (up and down too) |
 | **Space** | Jump; while hooked, hold to reel in |
-| Space / Right Click / Shift / E / Wheel Up | Reel in |
+| Space / Right Click / E / Wheel Up | Reel in |
+| **Shift** | Dash: snaps your momentum toward where the camera looks (1.2 s cooldown) |
 | Q / Ctrl / Wheel Down | Reel out |
 | **1 / 2 / 3** | Switch physics preset (also in the pause menu) |
 | **R** | Restart run |
@@ -32,7 +33,7 @@ Green platforms are checkpoints. Falling into the lava sends you back to the las
 Tip: grab things *above and ahead* of you. A rope on a wall just swings you into the wall.
 
 ## Physics presets
-Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. **Bungee is the default.** Top speed is capped at 75 on the speedometer.
+Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. **Bungee is the default.** Top speed is capped at 75 on the speedometer; dashes and release boosts can briefly push past it (up to ~97) before bleeding back down. The camera pulls back as you speed up, and an orange trail shows your arc.
 
 1. **Float** — no gravity while hooked; you drift on your momentum and the rope just limits how far you go.
 2. **Light Arc** — 25% gravity while hooked, for slow, gentle pendulum swings.
