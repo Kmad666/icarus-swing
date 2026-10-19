@@ -19,9 +19,9 @@ Green platforms are checkpoints. Falling into the lava sends you back to the las
 | Input | Action |
 |---|---|
 | Mouse | Orbit camera / turn |
-| Hold **Left Click** | Fire grapple & swing (crosshair turns green when in range, 70 m) |
-| Release Left Click | Let go, keep momentum (gravity is off while hooked) |
-| **WASD** | Walk / air-steer / pump your swing |
+| Hold **Left Click** | Fire grapple. Anything inside the circle reticle within 70 m can be grabbed; the nearest one is marked with a green dot and is where the hook goes. The ground can't be grabbed. |
+| Release Left Click | Let go, keep momentum |
+| **WASD** | Walk / air-steer; while hooked, push toward where the camera looks (up and down too) |
 | **Space** | Jump; while hooked, hold to reel in |
 | Space / Right Click / Shift / E / Wheel Up | Reel in |
 | Q / Ctrl / Wheel Down | Reel out |
@@ -32,7 +32,7 @@ Green platforms are checkpoints. Falling into the lava sends you back to the las
 Tip: grab things *above and ahead* of you. A rope on a wall just swings you into the wall.
 
 ## Physics presets
-Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved.
+Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. **Bungee is the default.** Top speed is capped at 75 on the speedometer.
 
 1. **Float** — no gravity while hooked; you drift on your momentum and the rope just limits how far you go.
 2. **Light Arc** — 25% gravity while hooked, for slow, gentle pendulum swings.
@@ -43,7 +43,8 @@ Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved.
 
 ## Project layout
 - `scripts/main.gd` — builds the course, HUD, checkpoints, rings, goal, timer
-- `scripts/player.gd` — first-person controller + grapple
+- `scripts/player.gd` — third-person controller + grapple + physics presets
+- `scripts/reticle.gd` — circle reticle
 - `.github/workflows/deploy.yml` — every push to `main` exports for web and publishes to GitHub Pages (`gh-pages` branch)
 
 ## Setup note

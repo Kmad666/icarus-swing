@@ -14,18 +14,19 @@ const WALK_SPEED := 6.0
 const GROUND_ACCEL := 25.0
 const GROUND_FRICTION := 8.0
 const JUMP_VELOCITY := 6.0
-const AIR_ACCEL := 10.0
-const AIR_SPEED := 5.0          # air strafe cap (quake-style)
+const AIR_ACCEL := 22.0
+const AIR_SPEED := 9.0          # air strafe cap (quake-style)
 const SWING_ACCEL := 7.0       # WASD "pump" force while hanging
 const MAX_RANGE := 70.0         # how far the hook can reach
 const MIN_ROPE := 2.5
 const REEL_SPEED := 7.0
 const ATTACH_PULL := 0.03       # rope shortens by this fraction on attach (the "tug")
 const MAX_CORRECTION := 25.0    # caps rope-yank velocity so it never explodes
-const MAX_SPEED := 45.0
+const MAX_SPEED := 20.8         # = 75 on the HUD speedometer (km/h)
 const RELEASE_HOP := 3.5
 const CAM_DISTANCE := 5.5
 const CAM_SHOULDER := 0.8
+const RETICLE_RADIUS := 48.0     # keep in sync with reticle.gd
 
 var mouse_sensitivity := 0.0025
 
@@ -36,7 +37,7 @@ const PRESETS := [
 	{"name": "Light Arc", "desc": "25% gravity on the rope. Gentle, slow pendulum swings.",
 		"rope_gravity": 0.25, "elastic": 0.0, "pump": 7.0},
 	{"name": "Bungee", "desc": "Rope pulls you toward the hook like a stretchy band, 60% gravity. Fast and slingy.",
-		"rope_gravity": 0.6, "elastic": 1.4, "pump": 9.0},
+		"rope_gravity": 0.6, "elastic": 1.4, "pump": 16.0},
 ]
 var preset_index := 0
 var rope_gravity := 0.0   # fraction of GRAVITY applied while hooked
@@ -65,6 +66,9 @@ var pull_left := 0.0
 
 # What the crosshair is pointing at (read by the HUD)
 var aim_valid := false
+var aim_point := Vector3.ZERO
+var target_marker: MeshInstance3D
+var _reticle_offsets: Array[Vector2] = []
 var aim_distance := 0.0
 var controls_enabled := true
 
@@ -130,6 +134,22 @@ func _ready() -> void:
 	rope.visible = false
 	add_child(rope)
 
+	_reticle_offsets.append(Vector2.ZERO)
+	for ring in [[0.5, 6], [1.0, 12]]:
+		for k in ring[1]:
+			var a: float = TAU * k / ring[1]
+			_reticle_offsets.append(Vector2(cos(a), sin(a)) * RETICLE_RADIUS * ring[0])
+
+	target_marker = MeshInstance3D.new()
+	var tmm := SphereMesh.new()
+	tmm.radius = 0.35
+	tmm.height = 0.7
+	target_marker.mesh = tmm
+	target_marker.material_override = _mat(Color(0.4, 1.0, 0.5), true)
+	target_marker.top_level = true
+	target_marker.visible = false
+	add_child(target_marker)
+
 	hook = MeshInstance3D.new()
 	var hm := SphereMesh.new()
 	hm.radius = 0.25
@@ -169,14 +189,27 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func aim_ray() -> Dictionary:
-	var from := cam.global_position
-	var to := from - cam.global_basis.z * (MAX_RANGE + arm.get_hit_length())
-	var q := PhysicsRayQueryParameters3D.create(from, to, 1, [get_rid()])
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	# Range counts from the player, not the camera behind them
-	if not hit.is_empty() and global_position.distance_to(hit.position) > MAX_RANGE:
-		return {}
-	return hit
+	# Fan of rays across the reticle circle; keep the hit nearest the player.
+	var vp := get_viewport()
+	var center := vp.get_visible_rect().size * 0.5
+	var space := get_world_3d().direct_space_state
+	var reach := MAX_RANGE + arm.get_hit_length()
+	var best := {}
+	var best_d := INF
+	for off in _reticle_offsets:
+		var sp: Vector2 = center + off
+		var from := cam.project_ray_origin(sp)
+		var to := from + cam.project_ray_normal(sp) * reach
+		var q := PhysicsRayQueryParameters3D.create(from, to, 2, [get_rid()])   # grappleable layer only
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			continue
+		# Range counts from the player, not the camera behind them
+		var d := global_position.distance_to(hit.position)
+		if d <= MAX_RANGE and d < best_d:
+			best_d = d
+			best = hit
+	return best
 
 
 func try_grapple() -> void:
@@ -219,7 +252,8 @@ func _physics_process(dt: float) -> void:
 	if attached:
 		if is_on_floor():
 			_walk(wish, dt)   # rope is slack on the ground: walk normally, no ice-skating
-		_swing(wish, dt)
+		var look_wish := (cam.global_basis * Vector3(input.x, 0, input.y)).normalized()
+		_swing(look_wish, dt)
 	elif is_on_floor():
 		_walk(wish, dt)
 		if controls_enabled and Input.is_action_just_pressed("jump"):
@@ -291,7 +325,11 @@ func _process(_dt: float) -> void:
 	# Crosshair state
 	var hit := aim_ray()
 	aim_valid = not hit.is_empty()
-	aim_distance = global_position.distance_to(hit.position) if aim_valid else 0.0
+	aim_point = hit.position if aim_valid else Vector3.ZERO
+	aim_distance = global_position.distance_to(aim_point) if aim_valid else 0.0
+	target_marker.visible = aim_valid and not attached and controls_enabled
+	if target_marker.visible:
+		target_marker.global_position = aim_point
 
 	# Speed FOV kick
 	var spd := velocity.length()

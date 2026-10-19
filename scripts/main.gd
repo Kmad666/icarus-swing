@@ -21,7 +21,7 @@ var rings_total := 0
 var rings_got := 0
 
 # HUD
-var crosshair: Label
+var crosshair
 var dist_label: Label
 var timer_label: Label
 var info_label: Label
@@ -41,7 +41,7 @@ func _ready() -> void:
 	player = PlayerScript.new()
 	add_child(player)
 	player.reset_to(START_POS, 0.0)
-	var saved := 0
+	var saved := 2   # Bungee is the default
 	if FileAccess.file_exists(SETTINGS_PATH):
 		var f := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
 		if f:
@@ -131,7 +131,7 @@ func _mat(c: Color, glow := false) -> StandardMaterial3D:
 
 func _solid(shape: Shape3D, mesh: Mesh, pos: Vector3, color: Color) -> StaticBody3D:
 	var body := StaticBody3D.new()
-	body.collision_layer = 1
+	body.collision_layer = 1 | 2   # layer 1 = solid, layer 2 = grappleable
 	body.collision_mask = 0
 	body.position = pos
 	var cs := CollisionShape3D.new()
@@ -244,11 +244,12 @@ func ring(pos: Vector3, facing_x := false) -> void:
 func _build_test_area() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1337   # same layout every time
-	box(Vector3(0, -0.5, 0), Vector3(500, 1, 500), Color(0.45, 0.55, 0.42))
+	var ground := box(Vector3(0, -0.5, 0), Vector3(500, 1, 500), Color(0.45, 0.55, 0.42))
+	ground.collision_layer = 1   # solid but not grappleable, so the reticle never snaps to the floor
 	# faint grid stripes so you can judge speed
 	for i in range(-12, 13):
-		box(Vector3(i * 20, 0.01, 0), Vector3(0.3, 0.02, 500), Color(0.38, 0.47, 0.36))
-		box(Vector3(0, 0.01, i * 20), Vector3(500, 0.02, 0.3), Color(0.38, 0.47, 0.36))
+		box(Vector3(i * 20, 0.01, 0), Vector3(0.3, 0.02, 500), Color(0.38, 0.47, 0.36)).collision_layer = 1
+		box(Vector3(0, 0.01, i * 20), Vector3(500, 0.02, 0.3), Color(0.38, 0.47, 0.36)).collision_layer = 1
 	var colors := [Color(0.3, 0.6, 0.7), Color(0.55, 0.45, 0.75), Color(0.9, 0.75, 0.35), Color(0.85, 0.4, 0.4)]
 	for i in 70:
 		var ang := rng.randf() * TAU
@@ -351,19 +352,14 @@ func _build_hud() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(root)
 
-	crosshair = _label("+", 34)
-	crosshair.set_anchors_preset(Control.PRESET_CENTER)
-	crosshair.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	crosshair.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	crosshair.size = Vector2(60, 60)
-	crosshair.position = -crosshair.size * 0.5
+	crosshair = preload("res://scripts/reticle.gd").new()
 	root.add_child(crosshair)
 
 	dist_label = _label("", 14)
 	dist_label.set_anchors_preset(Control.PRESET_CENTER)
 	dist_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	dist_label.size = Vector2(120, 20)
-	dist_label.position = Vector2(-60, 24)
+	dist_label.position = Vector2(-60, 54)
 	root.add_child(dist_label)
 
 	timer_label = _label("0:00.00", 30)
@@ -497,13 +493,13 @@ func _process(dt: float) -> void:
 		("   Best " + _fmt(best_time)) if best_time > 0 else ""]
 
 	if player.attached:
-		crosshair.modulate = Color(1.0, 0.65, 0.2)
+		crosshair.set_color(Color(1.0, 0.65, 0.2, 0.5))
 		dist_label.text = "rope %dm" % roundi(player.rope_len)
 	elif player.aim_valid:
-		crosshair.modulate = Color(0.4, 1.0, 0.5)
+		crosshair.set_color(Color(0.4, 1.0, 0.5, 0.5))
 		dist_label.text = "%dm" % roundi(player.aim_distance)
 	else:
-		crosshair.modulate = Color(1, 1, 1, 0.45)
+		crosshair.set_color(Color(1, 1, 1, 0.5))
 		dist_label.text = ""
 
 	if toast_t > 0.0:
