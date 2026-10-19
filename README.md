@@ -20,10 +20,10 @@ Green platforms are checkpoints. Falling into the lava sends you back to the las
 |---|---|
 | Mouse | Orbit camera / turn |
 | Hold **Left Click** | Fire grapple & swing (crosshair turns green when in range, 70 m) |
-| Release Left Click | Let go, keep momentum |
+| Release Left Click | Let go, keep momentum (gravity is off while hooked) |
 | **WASD** | Walk / air-steer / pump your swing |
-| **Space** | Jump, or hop off the rope with a little boost |
-| Right Click / Shift / E / Wheel Up | Reel in |
+| **Space** | Jump; while hooked, hold to reel in |
+| Space / Right Click / Shift / E / Wheel Up | Reel in |
 | Q / Ctrl / Wheel Down | Reel out |
 | **R** | Restart run |
 | Esc | Pause |

@@ -192,14 +192,13 @@ func _physics_process(dt: float) -> void:
 	wish.y = 0
 	wish = wish.normalized()
 
-	velocity.y -= GRAVITY * dt
+	if not attached:
+		velocity.y -= GRAVITY * dt   # no gravity while hooked: you float on the rope
 
 	if attached:
 		if is_on_floor():
 			_walk(wish, dt)   # rope is slack on the ground: walk normally, no ice-skating
 		_swing(wish, dt)
-		if controls_enabled and Input.is_action_just_pressed("jump"):
-			release(true)
 	elif is_on_floor():
 		_walk(wish, dt)
 		if controls_enabled and Input.is_action_just_pressed("jump"):
@@ -243,7 +242,7 @@ func _swing(wish: Vector3, dt: float) -> void:
 		rope_len -= p
 		pull_left -= p
 	if controls_enabled:
-		if Input.is_action_pressed("reel_in"):
+		if Input.is_action_pressed("reel_in") or Input.is_action_pressed("jump"):
 			rope_len -= REEL_SPEED * dt
 		if Input.is_action_pressed("reel_out"):
 			rope_len += REEL_SPEED * dt
