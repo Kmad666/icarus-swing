@@ -24,12 +24,15 @@ const ATTACH_PULL := 0.15       # rope shortens by this fraction on attach (the 
 const MAX_CORRECTION := 45.0    # caps rope-yank velocity so it never explodes
 const MAX_SPEED := 90.0
 const RELEASE_HOP := 5.0
+const CAM_DISTANCE := 5.5
+const CAM_SHOULDER := 0.8
 
 var mouse_sensitivity := 0.0025
 
 var head: Node3D
 var cam: Camera3D
-var gun: MeshInstance3D
+var body: MeshInstance3D
+var arm: SpringArm3D
 var rope: MeshInstance3D
 var hook: MeshInstance3D
 
@@ -56,31 +59,41 @@ func _ready() -> void:
 	col.shape = cap
 	add_child(col)
 
+	# Placeholder body: a capsule with a visor so you can tell which way it faces
+	body = MeshInstance3D.new()
+	var bm := CapsuleMesh.new()
+	bm.radius = 0.4
+	bm.height = 1.8
+	body.mesh = bm
+	body.material_override = _mat(Color(0.95, 0.55, 0.2))
+	add_child(body)
+	var visor := MeshInstance3D.new()
+	var vm := BoxMesh.new()
+	vm.size = Vector3(0.5, 0.18, 0.2)
+	visor.mesh = vm
+	visor.material_override = _mat(Color(0.15, 0.2, 0.3))
+	visor.position = Vector3(0, 0.45, -0.32)
+	body.add_child(visor)
+
+	# Third-person rig: yaw on the body, pitch on the head pivot, camera on a
+	# spring arm so it pulls in instead of clipping through walls.
 	head = Node3D.new()
-	head.position.y = 0.65
+	head.position.y = 0.9
 	add_child(head)
 
+	arm = SpringArm3D.new()
+	arm.spring_length = CAM_DISTANCE
+	arm.margin = 0.3
+	arm.collision_mask = 1
+	arm.add_excluded_object(get_rid())
+	arm.position = Vector3(CAM_SHOULDER, 0, 0)   # over-the-shoulder so the crosshair stays clear
+	head.add_child(arm)
+
 	cam = Camera3D.new()
-	cam.fov = 80
+	cam.fov = 75
 	cam.far = 1500
 	cam.near = 0.05
-	head.add_child(cam)
-
-	# Placeholder grapple gun: a chunky box in the lower right of the view
-	gun = MeshInstance3D.new()
-	var gm := BoxMesh.new()
-	gm.size = Vector3(0.12, 0.12, 0.5)
-	gun.mesh = gm
-	gun.material_override = _mat(Color(0.25, 0.27, 0.32))
-	gun.position = Vector3(0.32, -0.28, -0.55)
-	cam.add_child(gun)
-	var tip := MeshInstance3D.new()
-	var tm := BoxMesh.new()
-	tm.size = Vector3(0.08, 0.08, 0.1)
-	tip.mesh = tm
-	tip.material_override = _mat(Color(1.0, 0.55, 0.1), true)
-	tip.position = Vector3(0, 0, -0.28)
-	gun.add_child(tip)
+	arm.add_child(cam)
 
 	rope = MeshInstance3D.new()
 	var rm := CylinderMesh.new()
@@ -120,7 +133,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * mouse_sensitivity)
 		head.rotate_x(-event.relative.y * mouse_sensitivity)
-		head.rotation.x = clamp(head.rotation.x, deg_to_rad(-89), deg_to_rad(89))
+		head.rotation.x = clamp(head.rotation.x, deg_to_rad(-80), deg_to_rad(70))
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -135,9 +148,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func aim_ray() -> Dictionary:
 	var from := cam.global_position
-	var to := from - cam.global_basis.z * MAX_RANGE
+	var to := from - cam.global_basis.z * (MAX_RANGE + arm.get_hit_length())
 	var q := PhysicsRayQueryParameters3D.create(from, to, 1, [get_rid()])
-	return get_world_3d().direct_space_state.intersect_ray(q)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	# Range counts from the player, not the camera behind them
+	if not hit.is_empty() and global_position.distance_to(hit.position) > MAX_RANGE:
+		return {}
+	return hit
 
 
 func try_grapple() -> void:
@@ -246,17 +263,17 @@ func _process(_dt: float) -> void:
 	# Crosshair state
 	var hit := aim_ray()
 	aim_valid = not hit.is_empty()
-	aim_distance = cam.global_position.distance_to(hit.position) if aim_valid else 0.0
+	aim_distance = global_position.distance_to(hit.position) if aim_valid else 0.0
 
 	# Speed FOV kick
 	var spd := velocity.length()
-	cam.fov = lerp(cam.fov, 78.0 + clamp((spd - 8.0) * 0.6, 0.0, 22.0), 0.08)
+	cam.fov = lerp(cam.fov, 72.0 + clamp((spd - 8.0) * 0.6, 0.0, 22.0), 0.08)
 
 	# Rope visual from the gun tip to the anchor
 	rope.visible = attached
 	hook.visible = attached
 	if attached:
-		var a := gun.global_position + gun.global_basis * Vector3(0, 0, -0.3)
+		var a := global_position + Vector3(0, 0.3, 0)
 		var b := anchor
 		var dir := b - a
 		var length := dir.length()

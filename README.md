@@ -1,6 +1,6 @@
 # Icarus Swing
 
-A first-person grapple-hook swinging game in **Godot 4.7** — point, click, swing, fly. Inspired by Verlet Swing. All art is placeholder shapes for now.
+A third-person grapple-hook swinging game in **Godot 4.7** — point, click, swing, fly. Inspired by Verlet Swing. All art is placeholder shapes for now.
 
 **Play in your browser:** https://kmad666.github.io/icarus-swing/
 
@@ -16,7 +16,7 @@ Green platforms are checkpoints. Falling into the lava sends you back to the las
 ## Controls
 | Input | Action |
 |---|---|
-| Mouse | Look |
+| Mouse | Orbit camera / turn |
 | Hold **Left Click** | Fire grapple & swing (crosshair turns green when in range, 70 m) |
 | Release Left Click | Let go, keep momentum |
 | **WASD** | Walk / air-steer / pump your swing |
