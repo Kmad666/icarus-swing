@@ -25,6 +25,17 @@ static func lit(color: Color, tex_name := "", tile := 2.0) -> ShaderMaterial:
 	return m
 
 
+## Lit, plus a soft self-glow so a character stays readable at night.
+static func lit_char(color: Color, tex_name := "", tile := 2.0, glow := 0.35) -> ShaderMaterial:
+	var key := "C%s%s%s%s" % [color, tex_name, tile, glow]
+	if _mats.has(key):
+		return _mats[key]
+	var m: ShaderMaterial = lit(color, tex_name, tile).duplicate()
+	m.set_shader_parameter("emission", Color(color.r * glow, color.g * glow, color.b * glow))
+	_mats[key] = m
+	return m
+
+
 ## Unlit colour. `through_fog` keeps it bright at any distance (lantern flames).
 static func unlit(color: Color, through_fog := false) -> ShaderMaterial:
 	var key := "U%s%s" % [color, through_fog]

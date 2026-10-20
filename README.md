@@ -5,7 +5,7 @@ A third-person PS1-style grapple-hook game in **Godot 4.7** — point, click, sw
 **Play in your browser:** https://kmad666.github.io/icarus-swing/
 
 ## Where it's headed
-A hooded thief swinging across a fantasy medieval city at night, in a PS1 style: low-poly, low resolution, no anti-aliasing. Platforming to collect loot, solve puzzles and reach places you can't get to on foot. Grapple points are hanging lanterns: dark iron cages with a glowing flame, so they stand out in the dark.
+A chibi thief heroine swinging across a fantasy medieval city at night, in a PS1 style: low-poly, low resolution, no anti-aliasing. Platforming to collect loot, solve puzzles and reach places you can't get to on foot. Grapple points are hanging lanterns: dark iron cages with a glowing flame, so they stand out in the dark.
 
 **Right now** the game loads a small test district: a cobbled street lined with half-timbered houses, a bell tower at the far end, and about 50 lanterns on posts, wall brackets and lines strung between the rooftops.
 
@@ -44,7 +44,7 @@ Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. 
 ## Project layout
 - `scripts/main.gd` — low-res viewport, night setting, test district builder, HUD
 - `scripts/player.gd` — third-person controller, lantern targeting, grapple, physics presets
-- `scripts/thief.gd` — low-poly hooded thief with code-driven animation (idle, run, jump, fall, swing, landing, flowing cape)
+- `scripts/heroine.gd` — the heroine: round lavender-haired chibi head with glowing sleepy eyes, cone cloak, pointed ballet legs; code-driven animation (idle head-tilt, tip-toe run, jump tuck, fall, swing stance with one leg raised and bent, blinking, surprised eyes on long falls, cloak hem flutter)
 - `scripts/lantern.gd` — hanging lantern: iron cage, flickering flame, light, glow halo
 - `scripts/ps1.gd` — shared PS1 materials and procedural textures
 - `scripts/reticle.gd` — circle reticle

@@ -100,7 +100,7 @@ func _ready() -> void:
 	col.shape = cap
 	add_child(col)
 
-	thief = preload("res://scripts/thief.gd").new()
+	thief = preload("res://scripts/heroine.gd").new()
 	add_child(thief)
 
 	# Third-person rig: yaw on the body, pitch on the head pivot, camera on a
