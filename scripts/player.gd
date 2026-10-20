@@ -24,8 +24,11 @@ const ATTACH_PULL := 0.03       # rope shortens by this fraction on attach (the 
 const MAX_CORRECTION := 25.0    # caps rope-yank velocity so it never explodes
 const MAX_SPEED := 20.8         # = 75 on the HUD speedometer (km/h)
 const RELEASE_HOP := 3.5
-const CAM_DISTANCE := 5.5
-const CAM_SHOULDER := 0.8
+const CAM_DISTANCE := 4.6
+const CAM_SHOULDER := 0.6
+const CAM_HEIGHT := 0.9
+const CAM_IDLE_DISTANCE := 2.3   # camera eases in when she stands still...
+const IDLE_DELAY := 1.5          # ...for this many seconds, and she turns to face you
 const RETICLE_RADIUS := 48.0     # keep in sync with reticle.gd
 const AIR_GRAPPLES := 3          # grapples you can fire before touching the ground
 const DASH_SPEED := 15.0         # dash redirects you along the camera at least this fast
@@ -78,6 +81,8 @@ var pull_left := 0.0
 
 # What the crosshair is pointing at (read by the HUD)
 var air_grapples := AIR_GRAPPLES
+var idle_time := 0.0
+var idle_amount := 0.0   # 0..1, read by the HUD to fade the reticle in close-up
 var dash_cd := 0.0
 var trail: MeshInstance3D
 var trail_mesh: ImmediateMesh
@@ -106,7 +111,7 @@ func _ready() -> void:
 	# Third-person rig: yaw on the body, pitch on the head pivot, camera on a
 	# spring arm so it pulls in instead of clipping through walls.
 	head = Node3D.new()
-	head.position.y = 0.9
+	head.position.y = CAM_HEIGHT
 	add_child(head)
 
 	arm = SpringArm3D.new()
@@ -252,6 +257,7 @@ func reset_to(pos: Vector3, yaw: float) -> void:
 	global_position = pos
 	velocity = Vector3.ZERO
 	air_grapples = AIR_GRAPPLES
+	idle_time = 0.0
 	trail_pts.clear()
 	rotation.y = yaw
 	head.rotation.x = 0.0
@@ -264,6 +270,11 @@ func _physics_process(dt: float) -> void:
 	var wish := global_basis * Vector3(input.x, 0, input.y)
 	wish.y = 0
 	wish = wish.normalized()
+
+	if is_on_floor() and not attached and input == Vector2.ZERO and Vector2(velocity.x, velocity.z).length() < 0.5:
+		idle_time += dt
+	else:
+		idle_time = 0.0
 
 	velocity.y -= GRAVITY * (rope_gravity if attached else 1.0) * dt
 
@@ -371,12 +382,17 @@ func _process(_dt: float) -> void:
 		if target_lantern:
 			target_lantern.set_targeted(true)
 
-	thief.animate(_dt, velocity, is_on_floor(), attached, anchor)
+	var idle_k := smoothstep(IDLE_DELAY, IDLE_DELAY + 1.0, idle_time)
+	idle_amount = idle_k
+	thief.animate(_dt, velocity, is_on_floor(), attached, anchor, cam.global_position, idle_k)
 
 	# Speed FOV kick
 	var spd := velocity.length()
 	cam.fov = lerp(cam.fov, 72.0 + clamp((spd - 8.0) * 0.6, 0.0, 22.0), 0.08)
-	arm.spring_length = lerp(arm.spring_length, CAM_DISTANCE + CAM_PULLBACK * clamp((spd - 6.0) / (MAX_SPEED - 6.0), 0.0, 1.0), 0.05)
+	var cam_target := CAM_DISTANCE + CAM_PULLBACK * clampf((spd - 6.0) / (MAX_SPEED - 6.0), 0.0, 1.0)
+	arm.spring_length = lerp(arm.spring_length, lerpf(cam_target, CAM_IDLE_DISTANCE, idle_k), 0.05)
+	arm.position.x = lerpf(CAM_SHOULDER, 0.0, idle_k)
+	head.position.y = lerpf(CAM_HEIGHT, 0.6, idle_k)
 
 	# Rope visual from the thief's hand to the lantern ring
 	rope.visible = attached

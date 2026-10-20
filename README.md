@@ -5,7 +5,7 @@ A third-person PS1-style grapple-hook game in **Godot 4.7** — point, click, sw
 **Play in your browser:** https://kmad666.github.io/icarus-swing/
 
 ## Where it's headed
-A chibi thief heroine swinging across a fantasy medieval city at night, in a PS1 style: low-poly, low resolution, no anti-aliasing. Platforming to collect loot, solve puzzles and reach places you can't get to on foot. Grapple points are hanging lanterns: dark iron cages with a glowing flame, so they stand out in the dark.
+A tall, lithe thief heroine swinging across a fantasy medieval city at night, in a PS1 style: low-poly, low resolution, no anti-aliasing. Platforming to collect loot, solve puzzles and reach places you can't get to on foot. Grapple points are hanging lanterns: dark iron cages with a glowing flame, so they stand out in the dark.
 
 **Right now** the game loads a small test district: a cobbled street lined with half-timbered houses, a bell tower at the far end, and about 50 lanterns on posts, wall brackets and lines strung between the rooftops.
 
@@ -24,6 +24,8 @@ A chibi thief heroine swinging across a fantasy medieval city at night, in a PS1
 | **R** | Restart run |
 | Esc | Pause |
 
+Stand still for a moment and she turns to face you while the camera eases in, so you can see her face. Any movement ends it.
+
 ## Physics presets
 Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. **Bungee is the default.** Top speed is capped at 75 on the speedometer; dashes and release boosts can briefly push past it (up to ~97) before bleeding back down. The camera pulls back as you speed up, and an orange trail shows your arc.
 
@@ -35,7 +37,7 @@ Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. 
 `scripts/player.gd` treats the rope as a Verlet distance constraint: each physics tick it predicts where gravity and momentum would carry you, and if that's past the rope length it projects the point back onto the rope's sphere and derives velocity from the correction. You get real pendulum swings, and reeling in pumps speed.
 
 ## The PS1 look
-- The 3D world renders at 240 lines tall into a low-res viewport and is scaled up with sharp, nearest-neighbour pixels. The HUD stays crisp on top.
+- The 3D world renders at 360 lines tall into a low-res viewport and is scaled up with sharp, nearest-neighbour pixels. The HUD stays crisp on top.
 - `shaders/ps1.gdshader`: per-vertex lighting, wobbly snapped vertices, warped (affine) textures, 32×32 nearest-filtered textures.
 - `shaders/ps1_post.gdshader`: 15-bit colour with a 4×4 ordered dither.
 - Thick blue night fog; lantern flames and halos cut through it.
@@ -44,7 +46,7 @@ Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. 
 ## Project layout
 - `scripts/main.gd` — low-res viewport, night setting, test district builder, HUD
 - `scripts/player.gd` — third-person controller, lantern targeting, grapple, physics presets
-- `scripts/heroine.gd` — the heroine: round lavender-haired chibi head with glowing sleepy eyes, cone cloak, pointed ballet legs; code-driven animation (idle head-tilt, tip-toe run, jump tuck, fall, swing stance with one leg raised and bent, blinking, surprised eyes on long falls, cloak hem flutter)
+- `scripts/heroine.gd` — the heroine. Her head is built straight from the 2D concept sheet: a faceted lavender hair cap, notched bangs, side locks and flicks, and a V-chin face with a painted 48×35 pixel face texture (glowing sleepy eyes, blush, ^ mouth; blink and surprised variants). Cone cloak to mid-thigh, long legs tapering to ballet points. Code-driven animation: tip-toe run, jump tuck, fall, swing stance with one leg raised and bent, cloak hem flutter.
 - `scripts/lantern.gd` — hanging lantern: iron cage, flickering flame, light, glow halo
 - `scripts/ps1.gd` — shared PS1 materials and procedural textures
 - `scripts/reticle.gd` — circle reticle

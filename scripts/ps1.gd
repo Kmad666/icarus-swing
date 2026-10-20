@@ -31,7 +31,7 @@ static func lit_char(color: Color, tex_name := "", tile := 2.0, glow := 0.35) ->
 	if _mats.has(key):
 		return _mats[key]
 	var m: ShaderMaterial = lit(color, tex_name, tile).duplicate()
-	m.set_shader_parameter("emission", Color(color.r * glow, color.g * glow, color.b * glow))
+	m.set_shader_parameter("self_glow", glow)
 	_mats[key] = m
 	return m
 

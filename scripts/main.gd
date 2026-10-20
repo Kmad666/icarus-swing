@@ -1,14 +1,14 @@
 extends Node3D
 ## Icarus Swing — PS1-style night city test district.
 ##
-## The 3D world renders into a low-resolution SubViewport (240 lines tall),
+## The 3D world renders into a low-resolution SubViewport (360 lines tall),
 ## which is scaled up with nearest-neighbour filtering and run through a
 ## 15-bit colour dither pass. The HUD draws on top at full resolution.
 
 const PlayerScript := preload("res://scripts/player.gd")
 const LanternScript := preload("res://scripts/lantern.gd")
 
-const RENDER_LINES := 240          # vertical resolution of the 3D image
+const RENDER_LINES := 360          # vertical resolution of the 3D image (720 / this must be a whole number)
 const DEATH_Y := -20.0
 const SETTINGS_PATH := "user://settings.save"
 const START_POS := Vector3(0, 1.2, 14)
@@ -554,6 +554,12 @@ func _process(dt: float) -> void:
 	else:
 		crosshair.set_color(Color(1, 1, 1, 0.5))
 		dist_label.text = ""
+
+	# fade the centre HUD out of the way while the camera is close on her face
+	var hud_a: float = 1.0 - 0.9 * player.idle_amount
+	crosshair.modulate.a = hud_a
+	dist_label.modulate.a = hud_a
+	charge_label.modulate.a *= hud_a
 
 	if toast_t > 0.0:
 		toast_t -= dt
