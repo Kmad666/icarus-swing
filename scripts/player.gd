@@ -1,13 +1,16 @@
 extends CharacterBody3D
-## Third-person hooded thief with a Verlet-style grapple hook.
+## Third-person thief with a Verlet-style grapple: her pocket-watch chain.
 ##
-## Hold LEFT MOUSE to hook the lantern under the reticle and swing. Let go to fly.
+## Hold LEFT MOUSE to fire the arrowhead at the lantern under the reticle; when it
+## lands she swings. Let go to fly, and the arrow zips back to her shoulder.
 ## The rope is a distance constraint: each tick we predict where gravity and
 ## momentum would carry us, and if that point is farther from the anchor than
 ## the rope allows, we project it back onto the rope's sphere (classic Verlet
 ## constraint) and derive the velocity from the corrected position.
 
 signal grappled
+
+const Chain := preload("res://scripts/chain.gd")
 
 const GRAVITY := 13.0
 const WALK_SPEED := 6.0
@@ -17,12 +20,11 @@ const JUMP_VELOCITY := 6.0
 const AIR_ACCEL := 22.0
 const AIR_SPEED := 9.0          # air strafe cap (quake-style)
 const SWING_ACCEL := 7.0       # WASD "pump" force while hanging
-const MAX_RANGE := 70.0         # how far the hook can reach
 const MIN_ROPE := 2.5
 const REEL_SPEED := 7.0
 const ATTACH_PULL := 0.03       # rope shortens by this fraction on attach (the "tug")
 const MAX_CORRECTION := 25.0    # caps rope-yank velocity so it never explodes
-const MAX_SPEED := 20.8         # = 75 on the HUD speedometer (km/h)
+const MAX_SPEED := 11.11        # = 40 on the HUD speedometer (km/h)
 const RELEASE_HOP := 3.5
 const CAM_DISTANCE := 4.6
 const CAM_SHOULDER := 0.6
@@ -30,11 +32,14 @@ const CAM_HEIGHT := 0.9
 const CAM_IDLE_DISTANCE := 2.3   # camera eases in when she stands still...
 const IDLE_DELAY := 1.5          # ...for this many seconds, and she turns to face you
 const RETICLE_RADIUS := 48.0     # keep in sync with reticle.gd
-const AIR_GRAPPLES := 3          # grapples you can fire before touching the ground
-const DASH_SPEED := 15.0         # dash redirects you along the camera at least this fast
+# Grapple levels 1..10: reach (m) and how many grapples you get before touching the ground
+const LEVEL_RANGE := [12.0, 15.0, 18.0, 21.0, 24.0, 27.0, 30.0, 33.0, 36.0, 40.0]
+const ARROW_SPEED := 90.0        # m/s the arrowhead flies out
+const RETURN_SPEED := 55.0       # m/s it zips back
+const DASH_SPEED := 10.0         # dash redirects you along the camera at least this fast
 const DASH_COOLDOWN := 1.2
 const RELEASE_BOOST := 0.15      # +15% speed when you let go while moving fast
-const BOOST_MIN_SPEED := 10.0
+const BOOST_MIN_SPEED := 6.0
 const OVERSPEED_ALLOW := 1.3     # dash/release boost may briefly exceed the cap by 30%...
 const OVERSPEED_BLEED := 2.5     # ...then bleed back down to it this fast (per second)
 const CAM_PULLBACK := 3.0        # camera eases back this far at top speed
@@ -71,8 +76,7 @@ var lanterns: Array = []          # set by main: the only grapple targets
 var target_lantern: Node3D
 var hooked_lantern: Node3D
 var arm: SpringArm3D
-var rope: MeshInstance3D
-var hook: MeshInstance3D
+var chain: Node3D
 
 var attached := false
 var anchor := Vector3.ZERO
@@ -80,7 +84,13 @@ var rope_len := 0.0
 var pull_left := 0.0
 
 # What the crosshair is pointing at (read by the HUD)
-var air_grapples := AIR_GRAPPLES
+var grapple_level := 1
+var grapple_range: float = LEVEL_RANGE[0]
+var air_max := 1                 # grapples allowed per jump at this level
+var air_grapples := 1
+var hook_state := 0              # chain.gd: STOWED, FLYING, HOOKED, RETURNING
+var hook_tip := Vector3.ZERO     # arrowhead tip, world space
+var hook_target: Node3D          # lantern the arrow is flying at
 var idle_time := 0.0
 var idle_amount := 0.0   # 0..1, read by the HUD to fade the reticle in close-up
 var dash_cd := 0.0
@@ -128,18 +138,9 @@ func _ready() -> void:
 	cam.near = 0.05
 	arm.add_child(cam)
 
-	rope = MeshInstance3D.new()
-	var rm := CylinderMesh.new()
-	rm.top_radius = 0.045
-	rm.bottom_radius = 0.045
-	rm.height = 1.0
-	rm.radial_segments = 4
-	rm.rings = 1
-	rope.mesh = rm
-	rope.material_override = PS1.unlit(Color(0.62, 0.5, 0.33))   # hemp rope, unlit so it reads at night
-	rope.top_level = true
-	rope.visible = false
-	add_child(rope)
+	chain = Chain.new()
+	chain.heroine = thief
+	add_child(chain)
 
 	trail_mesh = ImmediateMesh.new()
 	trail = MeshInstance3D.new()
@@ -154,16 +155,7 @@ func _ready() -> void:
 	trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(trail)
 
-	hook = MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.25
-	hm.height = 0.5
-	hook.mesh = hm
-	hook.material_override = _mat(Color(1.0, 0.75, 0.2), true)
-	hook.top_level = true
-	hook.mesh = null   # the lantern's own ring is the hook point
-	hook.visible = false
-	add_child(hook)
+	set_level(1)
 
 
 func _mat(c: Color, glow := false) -> StandardMaterial3D:
@@ -192,7 +184,7 @@ func handle_mouse(event: InputEvent) -> void:
 		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP and attached:
 			rope_len = max(MIN_ROPE, rope_len - 0.75)
 		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN and attached:
-			rope_len = min(MAX_RANGE, rope_len + 0.75)
+			rope_len = min(grapple_range, rope_len + 0.75)
 
 
 func aim_ray() -> Dictionary:
@@ -208,7 +200,7 @@ func aim_ray() -> Dictionary:
 	for l in lanterns:
 		var anchor_pos: Vector3 = l.global_position
 		var d := global_position.distance_to(anchor_pos)
-		if d > MAX_RANGE or d >= best_d:
+		if d > grapple_range or d >= best_d:
 			continue
 		var look_at_pos: Vector3 = anchor_pos + Vector3(0, -l.chain_length - 0.5, 0)   # the glowing body
 		if cam.is_position_behind(look_at_pos):
@@ -223,27 +215,48 @@ func aim_ray() -> Dictionary:
 	return best
 
 
+func set_level(lv: int) -> void:
+	grapple_level = clampi(lv, 1, LEVEL_RANGE.size())
+	grapple_range = LEVEL_RANGE[grapple_level - 1]
+	air_max = grapple_level
+	air_grapples = air_max if is_on_floor() else mini(air_grapples, air_max)
+
+
+## Fire the arrowhead at the lantern under the reticle. It attaches when it arrives.
 func try_grapple() -> void:
+	if hook_state == Chain.FLYING or attached:
+		return
 	var hit := aim_ray()
 	if hit.is_empty():
 		return
-	var grounded := is_on_floor()
-	if not grounded:
+	if not is_on_floor():
 		if air_grapples <= 0:
 			return
 		air_grapples -= 1
+	hook_target = hit.lantern
+	hook_state = Chain.FLYING
+
+
+func _attach() -> void:
 	attached = true
-	anchor = hit.position
-	hooked_lantern = hit.lantern
-	rope_len = global_position.distance_to(anchor)
+	hook_state = Chain.HOOKED
+	anchor = hook_target.global_position
+	hook_tip = anchor
+	hooked_lantern = hook_target
+	rope_len = minf(global_position.distance_to(anchor), grapple_range)
 	pull_left = rope_len * ATTACH_PULL
 	grappled.emit()
 
 
+## Let go (or cancel a shot still in flight); the arrow heads home.
 func release(hop := false) -> void:
+	if hook_state == Chain.FLYING:
+		hook_state = Chain.RETURNING
+		return
 	if not attached:
 		return
 	attached = false
+	hook_state = Chain.RETURNING
 	# Release boost: letting go at speed flings you a little harder
 	var spd := velocity.length()
 	if spd > BOOST_MIN_SPEED:
@@ -252,11 +265,45 @@ func release(hop := false) -> void:
 		velocity.y = max(velocity.y, 0.0) + RELEASE_HOP
 
 
+## Moves the arrowhead out to its lantern or back home. Runs on the physics tick
+## because arriving is what attaches the rope.
+func _update_hook(dt: float) -> void:
+	match hook_state:
+		Chain.FLYING:
+			var goal: Vector3 = hook_target.global_position
+			var to := goal - hook_tip
+			var step := ARROW_SPEED * dt
+			if to.length() <= step:
+				_attach()
+			else:
+				hook_tip += to / to.length() * step
+		Chain.HOOKED:
+			hook_tip = anchor
+		Chain.RETURNING:
+			var home: Vector3 = chain.stowed_tip(_aim_dir())
+			var to := home - hook_tip
+			var step := maxf(RETURN_SPEED * dt, to.length() * (1.0 - exp(-18.0 * dt)))
+			if to.length() <= step + 0.02:
+				hook_state = Chain.STOWED
+			else:
+				hook_tip += to / to.length() * step
+		_:
+			hook_tip = chain.stowed_tip(_aim_dir())
+
+
+## Where the stowed arrowhead points: at the targeted lantern, else where the camera looks.
+func _aim_dir() -> Vector3:
+	if is_instance_valid(target_lantern) and not attached:
+		return target_lantern.global_position - thief.hover_point()
+	return -cam.global_basis.z
+
+
 func reset_to(pos: Vector3, yaw: float) -> void:
 	release()
 	global_position = pos
 	velocity = Vector3.ZERO
-	air_grapples = AIR_GRAPPLES
+	air_grapples = air_max
+	hook_state = Chain.STOWED
 	idle_time = 0.0
 	trail_pts.clear()
 	rotation.y = yaw
@@ -311,7 +358,8 @@ func _physics_process(dt: float) -> void:
 	floor_snap_length = 0.0 if attached else 0.3
 	move_and_slide()
 	if is_on_floor():
-		air_grapples = AIR_GRAPPLES
+		air_grapples = air_max
+	_update_hook(dt)
 	_update_trail()
 
 
@@ -351,7 +399,7 @@ func _swing(wish: Vector3, dt: float) -> void:
 			rope_len -= REEL_SPEED * dt
 		if Input.is_action_pressed("reel_out"):
 			rope_len += REEL_SPEED * dt
-	rope_len = clamp(rope_len, MIN_ROPE, MAX_RANGE)
+	rope_len = clamp(rope_len, MIN_ROPE, grapple_range)
 
 	# Verlet distance constraint: predict, project back onto the rope sphere
 	var next := global_position + velocity * dt
@@ -368,13 +416,15 @@ func _swing(wish: Vector3, dt: float) -> void:
 func _process(_dt: float) -> void:
 	# Crosshair state
 	var hit := aim_ray()
-	var can_fire := controls_enabled and not attached and (air_grapples > 0 or is_on_floor())
+	var can_fire := controls_enabled and not attached and hook_state != Chain.FLYING and (air_grapples > 0 or is_on_floor())
 	aim_valid = not hit.is_empty()
 	aim_point = hit.position if aim_valid else Vector3.ZERO
 	aim_distance = global_position.distance_to(aim_point) if aim_valid else 0.0
 	var new_target: Node3D = hit.lantern if aim_valid and can_fire else null
 	if attached:
 		new_target = hooked_lantern
+	elif hook_state == Chain.FLYING:
+		new_target = hook_target
 	if new_target != target_lantern:
 		if is_instance_valid(target_lantern):
 			target_lantern.set_targeted(false)
@@ -388,27 +438,13 @@ func _process(_dt: float) -> void:
 
 	# Speed FOV kick
 	var spd := velocity.length()
-	cam.fov = lerp(cam.fov, 72.0 + clamp((spd - 8.0) * 0.6, 0.0, 22.0), 0.08)
+	cam.fov = lerp(cam.fov, 72.0 + clamp((spd - 4.0) * 1.4, 0.0, 14.0), 0.08)
 	var cam_target := CAM_DISTANCE + CAM_PULLBACK * clampf((spd - 6.0) / (MAX_SPEED - 6.0), 0.0, 1.0)
 	arm.spring_length = lerp(arm.spring_length, lerpf(cam_target, CAM_IDLE_DISTANCE, idle_k), 0.05)
 	arm.position.x = lerpf(CAM_SHOULDER, 0.0, idle_k)
 	head.position.y = lerpf(CAM_HEIGHT, 0.6, idle_k)
 
-	# Rope visual from the thief's hand to the lantern ring
-	rope.visible = attached
-	hook.visible = attached
-	if attached:
-		var a: Vector3 = thief.hand_position()
-		var b := anchor
-		var dir := b - a
-		var length := dir.length()
-		if length > 0.01:
-			var y := dir / length
-			var helper := Vector3.UP if abs(y.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
-			var x := y.cross(helper).normalized()
-			var z := x.cross(y)
-			rope.global_transform = Transform3D(Basis(x, y * length, z), (a + b) * 0.5)
-		hook.global_position = anchor
+	chain.update(_dt, hook_state, hook_tip, _aim_dir())
 
 
 # Fading ribbon behind the thief so you can read your arc.

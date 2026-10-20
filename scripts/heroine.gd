@@ -18,6 +18,9 @@ const CLOAK_DARK := Color(0.26, 0.14, 0.28)
 const COPPER := Color(0.85, 0.55, 0.28)
 const LEGS := Color(0.82, 0.80, 0.90)        # pale ballet tights
 const GLOVE := Color(0.25, 0.17, 0.12)
+const WATCH_BRASS := Color(0.86, 0.66, 0.30)
+const WATCH_FACE := Color(1.0, 0.94, 0.78)
+const HOVER := Vector3(0.42, 0.70, 0.08)   # where the arrowhead floats: above her right shoulder
 
 const S := 0.0022          # metres per concept-sheet unit (head is ~0.48 m wide)
 const FACE_W := 48         # face texture size in pixels
@@ -34,6 +37,9 @@ var knee_r: Node3D
 var arm: Node3D            # the one arm that comes out of the cloak to hold the rope
 var hand: Node3D
 var face_mi: MeshInstance3D
+var watch: Node3D
+var hour_hand: Node3D
+var minute_hand: Node3D
 var _face_mats := {}
 var _expr := ""
 
@@ -89,10 +95,53 @@ func _ready() -> void:
 	arm.scale = Vector3.ONE * 0.01
 	arm.visible = false
 
+	# --- pocket watch resting on the front-left of her cloak at the waist
+	_build_watch()
+
 	# --- head
 	head = _pivot(cloak, Vector3(0, 0.03, 0.02))
 	_build_head()
 	set_expression("neutral")
+
+
+# ============================================================ pocket watch
+func _build_watch() -> void:
+	var th := -0.6                       # front-left, same angle the chain starts from
+	var y := -0.33                       # cloak-local: about waist height
+	var r := 0.085 + 0.33 / 0.68 * 0.165 + 0.018   # cone radius here, plus a hair
+	watch = _pivot(cloak, Vector3(sin(th) * r, y, -cos(th) * r))
+	watch.rotation = Vector3(-0.24, -th, 0)       # face outward, tilted to sit on the cone
+	var brass := PS1.lit_char(WATCH_BRASS, "", 2.0, 0.55)
+	var case_ := _cyl(watch, 0.07, 0.07, 0.03, Vector3.ZERO, brass, 10)
+	case_.rotation.x = PI * 0.5
+	var face := _cyl(watch, 0.056, 0.056, 0.032, Vector3(0, 0, -0.002), PS1.unlit(WATCH_FACE), 10)
+	face.rotation.x = PI * 0.5
+	var ink := PS1.unlit(Color(0.12, 0.08, 0.14))
+	for i in 4:   # 12, 3, 6, 9 marks
+		var a := TAU * i / 4.0
+		_box(watch, Vector3(0.008, 0.016, 0.004), Vector3(sin(a) * 0.044, cos(a) * 0.044, -0.019), ink).rotation.z = -a
+	hour_hand = _pivot(watch, Vector3(0, 0, -0.02))
+	_box(hour_hand, Vector3(0.01, 0.028, 0.004), Vector3(0, 0.014, 0), ink)
+	minute_hand = _pivot(watch, Vector3(0, 0, -0.021))
+	_box(minute_hand, Vector3(0.007, 0.042, 0.004), Vector3(0, 0.021, 0), ink)
+	# crown and bow on top, where the chain is fastened
+	_cyl(watch, 0.012, 0.012, 0.022, Vector3(0, 0.079, 0), brass, 6)
+	_box(watch, Vector3(0.036, 0.03, 0.01), Vector3(0, 0.1, 0), brass)
+
+
+## The bow ring the chain is fastened to (world space).
+func watch_ring() -> Vector3:
+	return watch.to_global(Vector3(0, 0.1, 0))
+
+
+## Where the arrowhead floats when stowed (world space).
+func hover_point() -> Vector3:
+	return global_transform * (HOVER + Vector3(0, sin(_t * 2.1) * 0.025, 0))
+
+
+## 0..1: how far her hand has reached out to grip the chain.
+func grab_amount() -> float:
+	return clampf(_arm_out, 0.0, 1.0)
 
 
 # ============================================================ head
@@ -502,8 +551,15 @@ func animate(dt: float, vel: Vector3, on_floor: bool, attached: bool, anchor: Ve
 		var target := -(0.2 + sf * 0.35 + lift * 0.6 + (0.3 if attached else 0.0) + flutter)
 		hem[i].rotation.x = lerp_angle(hem[i].rotation.x, target, 1.0 - exp(-10.0 * dt))
 
+	# watch keeps real time, and swings a little on its bow
+	var now := Time.get_time_dict_from_system()
+	var mins: float = now.minute + now.second / 60.0
+	minute_hand.rotation.z = -TAU * mins / 60.0
+	hour_hand.rotation.z = -TAU * (fmod(float(now.hour), 12.0) + mins / 60.0) / 12.0
+	watch.rotation.z = sin(_t * 3.0) * 0.08 * clampf(speed / 6.0, 0.2, 1.0)
+
 	# face: blink every few seconds, wide eyes on a long fall
-	_surprise = lerp(_surprise, 1.0 if (not on_floor and not attached and vel.y < -12.0) else 0.0, 1.0 - exp(-6.0 * dt))
+	_surprise = lerp(_surprise, 1.0 if (not on_floor and not attached and vel.y < -9.0) else 0.0, 1.0 - exp(-6.0 * dt))
 	_blink_t -= dt
 	if _blink_t < 0.0:
 		_blink_t = randf_range(2.5, 5.0)

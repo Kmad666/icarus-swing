@@ -27,6 +27,7 @@ var toast_t := 0.0
 var overlay: Control
 var preset_buttons: Array[Button] = []
 var preset_desc: Label
+var level_label: Label
 
 
 func _ready() -> void:
@@ -39,11 +40,15 @@ func _ready() -> void:
 	player.reset_to(START_POS, 0.0)
 	player.lanterns = lanterns
 	var saved := 2   # Bungee is the default
+	var level := 1
 	if FileAccess.file_exists(SETTINGS_PATH):
 		var f := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
 		if f:
 			saved = f.get_8()
+			if f.get_length() >= 2:
+				level = f.get_8()
 	player.apply_preset(saved)
+	player.set_level(level)
 	_build_hud()
 
 
@@ -460,12 +465,12 @@ func _build_hud() -> void:
 	col.add_child(title)
 	var help := _label(
 		"Swing from the hanging lanterns. Only lanterns can be hooked.\n\n" +
-		"Mouse — look        Hold LEFT CLICK — grapple (3 in the air, refill on landing)\n" +
+		"Mouse — look        Hold LEFT CLICK — fire the chain hook at a lantern\n" +
 		"Release LEFT CLICK — let go      Space — jump\n" +
 		"WASD — walk, air-steer, push while hooked\n" +
 		"Space / Right click / E / wheel up — reel in      Shift — dash\n" +
 		"Q / Ctrl / wheel down — reel out\n" +
-		"1 / 2 / 3 — physics preset      R — restart      Esc — pause", 20)
+		"1 / 2 / 3 — physics preset      [ / ] — grapple level      R — restart      Esc — pause", 20)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(help)
 
@@ -489,6 +494,28 @@ func _build_hud() -> void:
 	preset_desc = _label("", 18)
 	preset_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(preset_desc)
+	var lv_title := _label("\nGRAPPLE LEVEL", 22)
+	lv_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lv_title.add_theme_color_override("font_color", Color(1.0, 0.7, 0.3))
+	col.add_child(lv_title)
+	var lv_row := HBoxContainer.new()
+	lv_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	lv_row.add_theme_constant_override("separation", 16)
+	col.add_child(lv_row)
+	for d in [-1, 1]:
+		var b := Button.new()
+		b.text = "−" if d < 0 else "+"
+		b.custom_minimum_size = Vector2(52, 44)
+		b.add_theme_font_size_override("font_size", 24)
+		b.pressed.connect(func(): set_level(player.grapple_level + d))
+		lv_row.add_child(b)
+		if d < 0:
+			level_label = _label("", 20)
+			level_label.custom_minimum_size = Vector2(420, 0)
+			level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			lv_row.add_child(level_label)
+	_refresh_level_ui()
+
 	var go := _label("\nCLICK ANYWHERE TO PLAY", 22)
 	go.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(go)
@@ -504,9 +531,27 @@ func set_preset(i: int) -> void:
 	player.apply_preset(i)
 	_refresh_preset_ui()
 	_toast("Physics: %d. %s" % [i + 1, player.PRESETS[i].name])
+	_save_settings()
+
+
+func set_level(lv: int) -> void:
+	player.set_level(lv)
+	_refresh_level_ui()
+	_toast("Grapple level %d" % player.grapple_level)
+	_save_settings()
+
+
+func _refresh_level_ui() -> void:
+	var n: int = player.air_max
+	level_label.text = "Level %d   ·   reach %d m   ·   %d air grapple%s" % [
+		player.grapple_level, roundi(player.grapple_range), n, "" if n == 1 else "s"]
+
+
+func _save_settings() -> void:
 	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if f:
-		f.store_8(i)
+		f.store_8(player.preset_index)
+		f.store_8(player.grapple_level)
 
 
 func _refresh_preset_ui() -> void:
@@ -521,6 +566,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo \
 			and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_3:
 		set_preset(event.physical_keycode - KEY_1)
+	elif event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode in [KEY_BRACKETLEFT, KEY_BRACKETRIGHT, KEY_MINUS, KEY_EQUAL]:
+		var up: bool = event.physical_keycode in [KEY_BRACKETRIGHT, KEY_EQUAL]
+		set_level(player.grapple_level + (1 if up else -1))
 	elif event.is_action_pressed("restart"):
 		get_tree().reload_current_scene()
 	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
@@ -536,10 +585,11 @@ func _process(dt: float) -> void:
 	overlay.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
 
 	var spd := player.velocity.length()
-	info_label.text = "Physics: %s   Speed %d" % [player.PRESETS[player.preset_index].name, roundi(spd * 3.6)]
+	info_label.text = "Physics: %s   Speed %d   Grapple Lv %d (%d m)" % [
+		player.PRESETS[player.preset_index].name, roundi(spd * 3.6), player.grapple_level, roundi(player.grapple_range)]
 
 	var pips := ""
-	for i in player.AIR_GRAPPLES:
+	for i in player.air_max:
 		pips += ("● " if i < player.air_grapples else "○ ")
 	charge_label.text = pips + ("  DASH" if player.dash_cd == 0.0 else "")
 	charge_label.modulate = Color(1, 1, 1, 0.85) if player.air_grapples > 0 else Color(1, 0.4, 0.3, 0.85)
