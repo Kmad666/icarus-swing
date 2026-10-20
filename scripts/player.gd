@@ -1,7 +1,7 @@
 extends CharacterBody3D
-## Third-person player with a Verlet-style grapple hook.
+## Third-person hooded thief with a Verlet-style grapple hook.
 ##
-## Hold LEFT MOUSE on any surface to fire the hook and swing. Let go to fly.
+## Hold LEFT MOUSE to hook the lantern under the reticle and swing. Let go to fly.
 ## The rope is a distance constraint: each tick we predict where gravity and
 ## momentum would carry us, and if that point is farther from the anchor than
 ## the rope allows, we project it back onto the rope's sphere (classic Verlet
@@ -35,7 +35,7 @@ const BOOST_MIN_SPEED := 10.0
 const OVERSPEED_ALLOW := 1.3     # dash/release boost may briefly exceed the cap by 30%...
 const OVERSPEED_BLEED := 2.5     # ...then bleed back down to it this fast (per second)
 const CAM_PULLBACK := 3.0        # camera eases back this far at top speed
-const TRAIL_POINTS := 40
+const TRAIL_POINTS := 24
 
 var mouse_sensitivity := 0.0025
 
@@ -63,7 +63,10 @@ func apply_preset(i: int) -> void:
 
 var head: Node3D
 var cam: Camera3D
-var body: MeshInstance3D
+var thief: Node3D
+var lanterns: Array = []          # set by main: the only grapple targets
+var target_lantern: Node3D
+var hooked_lantern: Node3D
 var arm: SpringArm3D
 var rope: MeshInstance3D
 var hook: MeshInstance3D
@@ -81,8 +84,6 @@ var trail_mesh: ImmediateMesh
 var trail_pts: Array[Vector3] = []
 var aim_valid := false
 var aim_point := Vector3.ZERO
-var target_marker: MeshInstance3D
-var _reticle_offsets: Array[Vector2] = []
 var aim_distance := 0.0
 var controls_enabled := true
 
@@ -99,21 +100,8 @@ func _ready() -> void:
 	col.shape = cap
 	add_child(col)
 
-	# Placeholder body: a capsule with a visor so you can tell which way it faces
-	body = MeshInstance3D.new()
-	var bm := CapsuleMesh.new()
-	bm.radius = 0.4
-	bm.height = 1.8
-	body.mesh = bm
-	body.material_override = _mat(Color(0.95, 0.55, 0.2))
-	add_child(body)
-	var visor := MeshInstance3D.new()
-	var vm := BoxMesh.new()
-	vm.size = Vector3(0.5, 0.18, 0.2)
-	visor.mesh = vm
-	visor.material_override = _mat(Color(0.15, 0.2, 0.3))
-	visor.position = Vector3(0, 0.45, -0.32)
-	body.add_child(visor)
+	thief = preload("res://scripts/thief.gd").new()
+	add_child(thief)
 
 	# Third-person rig: yaw on the body, pitch on the head pivot, camera on a
 	# spring arm so it pulls in instead of clipping through walls.
@@ -137,32 +125,16 @@ func _ready() -> void:
 
 	rope = MeshInstance3D.new()
 	var rm := CylinderMesh.new()
-	rm.top_radius = 0.03
-	rm.bottom_radius = 0.03
+	rm.top_radius = 0.045
+	rm.bottom_radius = 0.045
 	rm.height = 1.0
-	rm.radial_segments = 6
+	rm.radial_segments = 4
 	rm.rings = 1
 	rope.mesh = rm
-	rope.material_override = _mat(Color(1.0, 0.6, 0.15), true)
+	rope.material_override = PS1.unlit(Color(0.62, 0.5, 0.33))   # hemp rope, unlit so it reads at night
 	rope.top_level = true
 	rope.visible = false
 	add_child(rope)
-
-	_reticle_offsets.append(Vector2.ZERO)
-	for ring in [[0.5, 6], [1.0, 12]]:
-		for k in ring[1]:
-			var a: float = TAU * k / ring[1]
-			_reticle_offsets.append(Vector2(cos(a), sin(a)) * RETICLE_RADIUS * ring[0])
-
-	target_marker = MeshInstance3D.new()
-	var tmm := SphereMesh.new()
-	tmm.radius = 0.35
-	tmm.height = 0.7
-	target_marker.mesh = tmm
-	target_marker.material_override = _mat(Color(0.4, 1.0, 0.5), true)
-	target_marker.top_level = true
-	target_marker.visible = false
-	add_child(target_marker)
 
 	trail_mesh = ImmediateMesh.new()
 	trail = MeshInstance3D.new()
@@ -184,6 +156,7 @@ func _ready() -> void:
 	hook.mesh = hm
 	hook.material_override = _mat(Color(1.0, 0.75, 0.2), true)
 	hook.top_level = true
+	hook.mesh = null   # the lantern's own ring is the hook point
 	hook.visible = false
 	add_child(hook)
 
@@ -196,7 +169,9 @@ func _mat(c: Color, glow := false) -> StandardMaterial3D:
 	return m
 
 
-func _unhandled_input(event: InputEvent) -> void:
+## Mouse look and grapple buttons. Main forwards mouse events here, because the
+## player lives inside the low-res SubViewport, which doesn't receive them itself.
+func handle_mouse(event: InputEvent) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED or not controls_enabled:
 		return
 	if event is InputEventMouseMotion:
@@ -216,26 +191,30 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func aim_ray() -> Dictionary:
-	# Fan of rays across the reticle circle; keep the hit nearest the player.
-	var vp := get_viewport()
-	var center := vp.get_visible_rect().size * 0.5
+	# Of the lanterns inside the reticle circle, in range and in line of sight,
+	# pick the one nearest the player. Returns {} or {position, lantern}.
+	var vp := cam.get_viewport()
+	var vp_size := vp.get_visible_rect().size
+	var center := vp_size * 0.5
+	var radius := RETICLE_RADIUS / 720.0 * vp_size.y   # HUD is laid out on a 720-high canvas
 	var space := get_world_3d().direct_space_state
-	var reach := MAX_RANGE + arm.get_hit_length()
 	var best := {}
 	var best_d := INF
-	for off in _reticle_offsets:
-		var sp: Vector2 = center + off
-		var from := cam.project_ray_origin(sp)
-		var to := from + cam.project_ray_normal(sp) * reach
-		var q := PhysicsRayQueryParameters3D.create(from, to, 2, [get_rid()])   # grappleable layer only
-		var hit := space.intersect_ray(q)
-		if hit.is_empty():
+	for l in lanterns:
+		var anchor_pos: Vector3 = l.global_position
+		var d := global_position.distance_to(anchor_pos)
+		if d > MAX_RANGE or d >= best_d:
 			continue
-		# Range counts from the player, not the camera behind them
-		var d := global_position.distance_to(hit.position)
-		if d <= MAX_RANGE and d < best_d:
-			best_d = d
-			best = hit
+		var look_at_pos: Vector3 = anchor_pos + Vector3(0, -l.chain_length - 0.5, 0)   # the glowing body
+		if cam.is_position_behind(look_at_pos):
+			continue
+		if cam.unproject_position(look_at_pos).distance_to(center) > radius:
+			continue
+		var q := PhysicsRayQueryParameters3D.create(cam.global_position, look_at_pos, 1, [get_rid()])
+		if not space.intersect_ray(q).is_empty():
+			continue   # a wall or roof is in the way
+		best_d = d
+		best = {"position": anchor_pos, "lantern": l}
 	return best
 
 
@@ -250,6 +229,7 @@ func try_grapple() -> void:
 		air_grapples -= 1
 	attached = true
 	anchor = hit.position
+	hooked_lantern = hit.lantern
 	rope_len = global_position.distance_to(anchor)
 	pull_left = rope_len * ATTACH_PULL
 	grappled.emit()
@@ -377,23 +357,32 @@ func _swing(wish: Vector3, dt: float) -> void:
 func _process(_dt: float) -> void:
 	# Crosshair state
 	var hit := aim_ray()
+	var can_fire := controls_enabled and not attached and (air_grapples > 0 or is_on_floor())
 	aim_valid = not hit.is_empty()
 	aim_point = hit.position if aim_valid else Vector3.ZERO
 	aim_distance = global_position.distance_to(aim_point) if aim_valid else 0.0
-	target_marker.visible = aim_valid and not attached and controls_enabled and (air_grapples > 0 or is_on_floor())
-	if target_marker.visible:
-		target_marker.global_position = aim_point
+	var new_target: Node3D = hit.lantern if aim_valid and can_fire else null
+	if attached:
+		new_target = hooked_lantern
+	if new_target != target_lantern:
+		if is_instance_valid(target_lantern):
+			target_lantern.set_targeted(false)
+		target_lantern = new_target
+		if target_lantern:
+			target_lantern.set_targeted(true)
+
+	thief.animate(_dt, velocity, is_on_floor(), attached, anchor)
 
 	# Speed FOV kick
 	var spd := velocity.length()
 	cam.fov = lerp(cam.fov, 72.0 + clamp((spd - 8.0) * 0.6, 0.0, 22.0), 0.08)
 	arm.spring_length = lerp(arm.spring_length, CAM_DISTANCE + CAM_PULLBACK * clamp((spd - 6.0) / (MAX_SPEED - 6.0), 0.0, 1.0), 0.05)
 
-	# Rope visual from the gun tip to the anchor
+	# Rope visual from the thief's hand to the lantern ring
 	rope.visible = attached
 	hook.visible = attached
 	if attached:
-		var a := global_position + Vector3(0, 0.3, 0)
+		var a: Vector3 = thief.hand_position()
 		var b := anchor
 		var dir := b - a
 		var length := dir.length()
@@ -406,7 +395,7 @@ func _process(_dt: float) -> void:
 		hook.global_position = anchor
 
 
-# Fading ribbon behind the capsule so you can read your arc.
+# Fading ribbon behind the thief so you can read your arc.
 func _update_trail() -> void:
 	var spd := velocity.length()
 	if spd > 5.0:
@@ -430,8 +419,8 @@ func _update_trail() -> void:
 			along = Vector3.FORWARD
 		var side := along.cross(eye - p).normalized()
 		var t := float(i) / (n - 1)
-		var w := 0.35 * (1.0 - t)
-		var c := Color(1.0, 0.6, 0.2, 0.6 * (1.0 - t))
+		var w := 0.07 * (1.0 - t)
+		var c := Color(0.75, 0.82, 1.0, 0.12 * (1.0 - t))   # faint wind streak
 		trail_mesh.surface_set_color(c)
 		trail_mesh.surface_add_vertex(p + side * w)
 		trail_mesh.surface_set_color(c)

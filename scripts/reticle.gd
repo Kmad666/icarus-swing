@@ -9,9 +9,15 @@ var color := Color(1, 1, 1, 0.5)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	set_anchors_preset(Control.PRESET_CENTER)
-	size = Vector2.ONE * (RADIUS * 2 + 8)
-	position = -size * 0.5
+	var half := RADIUS + 4.0
+	anchor_left = 0.5
+	anchor_right = 0.5
+	anchor_top = 0.5
+	anchor_bottom = 0.5
+	offset_left = -half
+	offset_right = half
+	offset_top = -half
+	offset_bottom = half
 
 
 func set_color(c: Color) -> void:

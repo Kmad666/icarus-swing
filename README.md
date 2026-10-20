@@ -1,25 +1,19 @@
 # Icarus Swing
 
-A third-person grapple-hook swinging game in **Godot 4.7** — point, click, swing, fly. Inspired by Verlet Swing. All art is placeholder shapes for now.
+A third-person PS1-style grapple-hook game in **Godot 4.7** — point, click, swing, fly. Inspired by Verlet Swing. Placeholder low-poly art built in code for now.
 
 **Play in your browser:** https://kmad666.github.io/icarus-swing/
 
-## Goal
-**Right now the game loads a flat test field** with grapple targets scattered in the air, for tuning the physics. The lava course below is still in the code (`_build_level()` in `scripts/main.gd`).
+## Where it's headed
+A hooded thief swinging across a fantasy medieval city at night, in a PS1 style: low-poly, low resolution, no anti-aliasing. Platforming to collect loot, solve puzzles and reach places you can't get to on foot. Grapple points are hanging lanterns: dark iron cages with a glowing flame, so they stand out in the dark.
 
-Swing across the lava sea through three sections and reach the golden beacon on the summit tower. Grab the cyan rings for bonus points, beat your best time.
-
-1. **Pillar Slalom** — T-shaped columns with arms hanging over the path
-2. **Beam Run** — overhead bars at alternating heights
-3. **Moons** — floating spheres, then reel yourself up to the gold block above the summit
-
-Green platforms are checkpoints. Falling into the lava sends you back to the last one.
+**Right now** the game loads a small test district: a cobbled street lined with half-timbered houses, a bell tower at the far end, and about 50 lanterns on posts, wall brackets and lines strung between the rooftops.
 
 ## Controls
 | Input | Action |
 |---|---|
 | Mouse | Orbit camera / turn |
-| Hold **Left Click** | Fire grapple. Anything inside the circle reticle within 70 m can be grabbed; the nearest one is marked with a green dot and is where the hook goes. The ground can't be grabbed. You get **3 grapples in the air** (pips under the reticle); landing refills them. |
+| Hold **Left Click** | Fire grapple. **Only lanterns can be hooked.** Of the lanterns inside the circle reticle (within 70 m and not behind a wall), the nearest one brightens and is where the hook goes. You get **3 grapples in the air** (pips under the reticle); landing refills them. |
 | Release Left Click | Let go; at speed you get a +15% release boost |
 | **WASD** | Walk / air-steer; while hooked, push toward where the camera looks (up and down too) |
 | **Space** | Jump; while hooked, hold to reel in |
@@ -29,8 +23,6 @@ Green platforms are checkpoints. Falling into the lava sends you back to the las
 | **1 / 2 / 3** | Switch physics preset (also in the pause menu) |
 | **R** | Restart run |
 | Esc | Pause |
-
-Tip: grab things *above and ahead* of you. A rope on a wall just swings you into the wall.
 
 ## Physics presets
 Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. **Bungee is the default.** Top speed is capped at 75 on the speedometer; dashes and release boosts can briefly push past it (up to ~97) before bleeding back down. The camera pulls back as you speed up, and an orange trail shows your arc.
@@ -42,11 +34,19 @@ Pick one in the pause menu (Esc) or press 1/2/3 any time. Your choice is saved. 
 ## How the rope works
 `scripts/player.gd` treats the rope as a Verlet distance constraint: each physics tick it predicts where gravity and momentum would carry you, and if that's past the rope length it projects the point back onto the rope's sphere and derives velocity from the correction. You get real pendulum swings, and reeling in pumps speed.
 
+## The PS1 look
+- The 3D world renders at 240 lines tall into a low-res viewport and is scaled up with sharp, nearest-neighbour pixels. The HUD stays crisp on top.
+- `shaders/ps1.gdshader`: per-vertex lighting, wobbly snapped vertices, warped (affine) textures, 32×32 nearest-filtered textures.
+- `shaders/ps1_post.gdshader`: 15-bit colour with a 4×4 ordered dither.
+- Thick blue night fog; lantern flames and halos cut through it.
+- Static scenery is merged by material into a few dozen meshes to keep draw calls low on integrated graphics.
+
 ## Project layout
-- `scripts/main.gd` — builds the course, HUD, checkpoints, rings, goal, timer
-- `scripts/player.gd` — third-person controller + grapple + physics presets
+- `scripts/main.gd` — low-res viewport, night setting, test district builder, HUD
+- `scripts/player.gd` — third-person controller, lantern targeting, grapple, physics presets
+- `scripts/thief.gd` — low-poly hooded thief with code-driven animation (idle, run, jump, fall, swing, landing, flowing cape)
+- `scripts/lantern.gd` — hanging lantern: iron cage, flickering flame, light, glow halo
+- `scripts/ps1.gd` — shared PS1 materials and procedural textures
 - `scripts/reticle.gd` — circle reticle
 - `.github/workflows/deploy.yml` — every push to `main` exports for web and publishes to GitHub Pages (`gh-pages` branch)
 
-## Setup note
-After the first push, in the repo go to **Settings → Pages** and set the source to **Deploy from a branch → `gh-pages` / root**.
